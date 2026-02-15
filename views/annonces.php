@@ -17,10 +17,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && str_contains($_SERVER['CONTENT_TYPE
         exit;
     }
 
-    $required = ['titre', 'caracteristiques', 'images', 'secteur'];
+    $required = ['titre', 'description', 'images', 'secteur'];
     foreach ($required as $field) {
         if (empty($data[$field])) {
-            echo json_encode(["success" => false, "message" => "Tous les champs sont obligatoires"]);
+            echo json_encode(["success" => false, "message" => "Tous les champs obligatoires sont manquants ($field)"]);
             exit;
         }
     }
@@ -35,6 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && str_contains($_SERVER['CONTENT_TYPE
         if (!file_exists("uploads/annonces"))
             mkdir("uploads/annonces", 0777, true);
         foreach ($data['images'] as $index => $imgData) {
+            // Check if it's base64
             if (preg_match('/^data:image\/(\w+);base64,/', $imgData, $type)) {
                 $imgData = substr($imgData, strpos($imgData, ',') + 1);
                 $type = strtolower($type[1]);
@@ -69,21 +70,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && str_contains($_SERVER['CONTENT_TYPE
         }
     }
 
+    // Donnees specifiques
+    $donnees_specifiques = isset($data['donnees_specifiques']) ? json_encode($data['donnees_specifiques'], JSON_UNESCAPED_UNICODE) : '{}';
+
     // Insert DB
+    // Note: 'caracteristiques' was replaced by 'description' to match user schema
     try {
-        $stmt = $pdo->prepare("INSERT INTO annonces (code_unique,titre,caracteristiques,secteur,images,video) VALUES (?,?,?,?,?,?)");
+        $stmt = $pdo->prepare("INSERT INTO annonces (code_unique, secteur, titre, description, donnees_specifiques, images, video) VALUES (?,?,?,?,?,?,?)");
         $stmt->execute([
             $code_unique,
-            htmlspecialchars($data['titre']),
-            htmlspecialchars($data['caracteristiques']),
             htmlspecialchars($data['secteur']),
+            htmlspecialchars($data['titre']),
+            htmlspecialchars($data['description']),
+            $donnees_specifiques,
             json_encode($imagePaths),
             $videoPath
         ]);
         echo json_encode(["success" => true, "message" => "Annonce publiée avec succès"]);
         exit;
     } catch (Exception $e) {
-        echo json_encode(["success" => false, "message" => "Erreur serveur"]);
+        echo json_encode(["success" => false, "message" => "Erreur serveur: " . $e->getMessage()]);
         exit;
     }
 }
@@ -127,7 +133,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && str_contains($_SERVER['CONTENT_TYPE
         }
 
         .form-control,
-        textarea {
+        textarea,
+        select {
             border-radius: 12px;
             padding: .7rem .9rem;
         }
@@ -171,6 +178,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && str_contains($_SERVER['CONTENT_TYPE
             font-size: .9rem;
             text-align: center;
         }
+
+        .sector-fields {
+            display: none;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            border: 1px solid #e9ecef;
+        }
     </style>
 </head>
 
@@ -197,33 +213,176 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && str_contains($_SERVER['CONTENT_TYPE
         </div>
     </nav><br><br>
     <div class="container my-5">
-        <div class="form-card mx-auto" style="max-width:600px;">
+        <div class="form-card mx-auto" style="max-width:800px;">
             <h3 class="mb-4 text-center">Publier une annonce</h3>
             <div id="result"></div>
             <form id="annonceForm">
+
+                <!-- Secteur Selection (Moved to top as requested) -->
                 <div class="mb-3">
-                    <label class="form-label">Titre</label>
-                    <input type="text" name="titre" class="form-control" required>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Caractéristiques</label>
-                    <textarea name="caracteristiques" class="form-control" rows="4" required></textarea>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Secteur</label>
-                    <select name="secteur" class="form-control" required>
+                    <label class="form-label">Secteur d'activité <span class="text-danger">*</span></label>
+                    <select name="secteur" id="secteurSelect" class="form-control" required>
                         <option value="">-- Sélectionnez un secteur --</option>
                         <option value="E-commerce">E-commerce</option>
                         <option value="Immobilier">Immobilier</option>
                         <option value="Événementiel">Événementiel</option>
-                        <option value="Propulseur d’évènement">Propulseur d’évènement</option>
-                        <option value="Autre">Autre</option>
+                        <option value="Propulseur d’activité">Propulseur d’activité</option>
                     </select>
+                </div>
+
+                <!-- Common Fields -->
+                <div class="mb-3">
+                    <label class="form-label" id="titreLabel">Titre / Nom <span class="text-danger">*</span></label>
+                    <input type="text" name="titre" class="form-control" required
+                        placeholder="Ex: iPhone 13, Appartement T3...">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Description <span class="text-danger">*</span></label>
+                    <textarea name="description" class="form-control" rows="4" required
+                        placeholder="Décrivez votre annonce en détail..."></textarea>
+                </div>
+
+                <!-- Dynamic Fields: E-commerce -->
+                <div id="fields-E-commerce" class="sector-fields">
+                    <h5 class="mb-3 text-primary"><i class="bi bi-cart"></i> Détails E-commerce</h5>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Catégorie</label>
+                            <input type="text" class="form-control spec-field" data-name="categorie">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Prix (FCFA)</label>
+                            <input type="number" class="form-control spec-field" data-name="prix">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Quantité stock</label>
+                            <input type="number" class="form-control spec-field" data-name="quantite">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Poids / Dimensions</label>
+                            <input type="text" class="form-control spec-field" data-name="poids_dimensions"
+                                placeholder="Ex: 2kg, 10x20cm">
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input class="form-check-input spec-field" type="checkbox"
+                                    data-name="livraison_disponible" id="livraisonCheck">
+                                <label class="form-check-label" for="livraisonCheck">Livraison disponible ?</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dynamic Fields: Immobilier -->
+                <div id="fields-Immobilier" class="sector-fields">
+                    <h5 class="mb-3 text-primary"><i class="bi bi-house"></i> Détails Immobilier</h5>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Type de bien</label>
+                            <select class="form-control spec-field" data-name="type_bien">
+                                <option value="Appartement">Appartement</option>
+                                <option value="Maison">Maison</option>
+                                <option value="Terrain">Terrain</option>
+                                <option value="Bureau">Bureau</option>
+                                <option value="Autre">Autre</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Statut</label>
+                            <select class="form-control spec-field" data-name="statut">
+                                <option value="A vendre">A vendre</option>
+                                <option value="A louer">A louer</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Prix (Loyer/Vente)</label>
+                            <input type="number" class="form-control spec-field" data-name="prix">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Localisation</label>
+                            <input type="text" class="form-control spec-field" data-name="localisation">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Surface (m²)</label>
+                            <input type="number" class="form-control spec-field" data-name="surface">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Nombre de pièces</label>
+                            <input type="number" class="form-control spec-field" data-name="pieces">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Capacité (pers)</label>
+                            <input type="number" class="form-control spec-field" data-name="capacite">
+                        </div>
+                        <div class="col-12 mb-3">
+                            <label class="form-label">Équipements (séparés par virgule)</label>
+                            <input type="text" class="form-control spec-field" data-name="equipements"
+                                placeholder="Wifi, Piscine, Garage...">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dynamic Fields: Événementiel -->
+                <div id="fields-Événementiel" class="sector-fields">
+                    <h5 class="mb-3 text-primary"><i class="bi bi-calendar-event"></i> Détails Événementiel</h5>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Type d'événement</label>
+                            <input type="text" class="form-control spec-field" data-name="type_evenement"
+                                placeholder="Concert, Conférence...">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Date & Heure</label>
+                            <input type="datetime-local" class="form-control spec-field" data-name="date_heure">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Lieu</label>
+                            <input type="text" class="form-control spec-field" data-name="lieu">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Prix Entrée</label>
+                            <input type="number" class="form-control spec-field" data-name="prix">
+                        </div>
+                        <div class="col-12 mb-3">
+                            <label class="form-label">Contact Info</label>
+                            <input type="text" class="form-control spec-field" data-name="contact">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dynamic Fields: Propulseur d’activité -->
+                <div id="fields-Propulseur d’activité" class="sector-fields">
+                    <h5 class="mb-3 text-primary"><i class="bi bi-rocket"></i> Détails Propulseur d’activité</h5>
+                    <div class="row">
+                        <div class="col-12 mb-3">
+                            <label class="form-label">Services proposés</label>
+                            <textarea class="form-control spec-field" rows="3" data-name="services"
+                                placeholder="Liste des services..."></textarea>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Adresse / Siège</label>
+                            <input type="text" class="form-control spec-field" data-name="adresse">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Horaires d'ouverture</label>
+                            <input type="text" class="form-control spec-field" data-name="horaires"
+                                placeholder="Lun-Ven: 8h-18h">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Contacts (Tél/Email)</label>
+                            <input type="text" class="form-control spec-field" data-name="contacts">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Références / Site Web</label>
+                            <input type="text" class="form-control spec-field" data-name="references">
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Images -->
                 <div class="mb-3">
-                    <label class="form-label">Images (max 5)</label>
+                    <label class="form-label">Images (max 5) <span class="text-danger">*</span></label>
                     <div class="drop-zone" id="imageDrop">
                         <i class="bi bi-image"></i>
                         <p>Glissez-déposez jusqu'à 5 images ou cliquez pour sélectionner</p>
@@ -244,7 +403,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && str_contains($_SERVER['CONTENT_TYPE
                 </div>
 
                 <div class="text-center">
-                    <button type="submit" class="btn btn-primary btn-lg" id="submitBtn" disabled>
+                    <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
                         <i class="bi bi-send me-2"></i>Publier
                     </button>
                 </div>
@@ -262,9 +421,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && str_contains($_SERVER['CONTENT_TYPE
         const submitBtn = document.getElementById('submitBtn');
         const form = document.getElementById('annonceForm');
         const result = document.getElementById('result');
+        const secteurSelect = document.getElementById('secteurSelect');
+        const titreLabel = document.getElementById('titreLabel');
 
         let imagesData = [];
         let videoData = null;
+
+        // IDs of all sector containers
+        const sectorIds = [
+            'fields-E-commerce',
+            'fields-Immobilier',
+            'fields-Événementiel',
+            'fields-Propulseur d’activité'
+        ];
+
+        // Handle Sector Change
+        secteurSelect.addEventListener('change', function () {
+            const selected = this.value;
+
+            // Updates labels based on sector logic
+            if (selected === 'E-commerce') titreLabel.innerHTML = 'Nom du produit <span class="text-danger">*</span>';
+            else if (selected === 'Immobilier') titreLabel.innerHTML = 'Nom du bien <span class="text-danger">*</span>';
+            else if (selected === 'Événementiel') titreLabel.innerHTML = 'Titre de l\'événement <span class="text-danger">*</span>';
+            else if (selected === 'Propulseur d’activité') titreLabel.innerHTML = 'Nom de l\'activité <span class="text-danger">*</span>';
+            else titreLabel.innerHTML = 'Titre / Nom <span class="text-danger">*</span>';
+
+            // Show/Hide specific fields
+            sectorIds.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    if (id === 'fields-' + selected) {
+                        el.style.display = 'block';
+                    } else {
+                        el.style.display = 'none';
+                    }
+                }
+            });
+        });
 
         /* =========================
            IMAGES
@@ -301,31 +494,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && str_contains($_SERVER['CONTENT_TYPE
         }
 
         function toggleSubmit() {
-            submitBtn.disabled = imagesData.length === 0;
+            // Optional: validation logic here to enable/disable button
         }
 
         /* Drag & drop images */
         imageDrop.addEventListener('click', () => imageInput.click());
-
         imageDrop.addEventListener('dragover', e => {
-            e.preventDefault();
-            imageDrop.classList.add('dragover');
+            e.preventDefault(); imageDrop.classList.add('dragover');
         });
-        imageDrop.addEventListener('dragleave', () => {
-            imageDrop.classList.remove('dragover');
-        });
+        imageDrop.addEventListener('dragleave', () => imageDrop.classList.remove('dragover'));
         imageDrop.addEventListener('drop', e => {
-            e.preventDefault();
-            imageDrop.classList.remove('dragover');
-            [...e.dataTransfer.files].forEach(file => {
-                if (file.type.startsWith('image/')) addImage(file);
-            });
+            e.preventDefault(); imageDrop.classList.remove('dragover');
+            [...e.dataTransfer.files].forEach(file => { if (file.type.startsWith('image/')) addImage(file); });
         });
-
         imageInput.addEventListener('change', () => {
-            [...imageInput.files].forEach(file => {
-                if (file.type.startsWith('image/')) addImage(file);
-            });
+            [...imageInput.files].forEach(file => { if (file.type.startsWith('image/')) addImage(file); });
             imageInput.value = '';
         });
 
@@ -351,14 +534,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && str_contains($_SERVER['CONTENT_TYPE
         }
 
         videoDrop.addEventListener('click', () => videoInput.click());
-
         videoDrop.addEventListener('drop', e => {
             e.preventDefault();
             if (videoData) { alert("Une seule vidéo autorisée"); return; }
             const file = e.dataTransfer.files[0];
             if (file && file.type.startsWith('video/')) createVideoPreview(file);
         });
-
         videoInput.addEventListener('change', () => {
             if (!videoData && videoInput.files[0]) createVideoPreview(videoInput.files[0]);
         });
@@ -374,13 +555,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && str_contains($_SERVER['CONTENT_TYPE
                 return;
             }
 
-            const data = {
+            const secteur = form.secteur.value;
+            if (!secteur) {
+                alert("Veuillez sélectionner un secteur");
+                return;
+            }
+
+            // Collect common data
+            const payload = {
                 titre: form.titre.value,
-                caracteristiques: form.caracteristiques.value,
-                secteur: form.secteur.value,
+                description: form.description.value,
+                secteur: secteur,
                 images: imagesData,
-                video: videoData
+                video: videoData,
+                donnees_specifiques: {}
             };
+
+            // Collect specific data
+            const activeContainer = document.getElementById('fields-' + secteur);
+            if (activeContainer) {
+                const inputs = activeContainer.querySelectorAll('.spec-field');
+                inputs.forEach(input => {
+                    const key = input.dataset.name;
+                    let val = input.value;
+                    if (input.type === 'checkbox') {
+                        val = input.checked;
+                    }
+                    if (val) {
+                        payload.donnees_specifiques[key] = val;
+                    }
+                });
+            }
 
             submitBtn.disabled = true;
             submitBtn.innerHTML = "Publication...";
@@ -389,7 +594,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && str_contains($_SERVER['CONTENT_TYPE
                 const res = await fetch('', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
+                    body: JSON.stringify(payload)
                 });
                 const json = await res.json();
 
@@ -400,10 +605,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && str_contains($_SERVER['CONTENT_TYPE
                     videoData = null;
                     imagePreviewContainer.innerHTML = '';
                     videoPreviewContainer.innerHTML = '';
+                    // Reset fields visibility
+                    sectorIds.forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el) el.style.display = 'none';
+                    });
+                    // Set title label back to default if needed, or trigger change event to reset
+                    titreLabel.innerHTML = 'Titre <span class="text-danger">*</span>';
                 } else {
                     result.innerHTML = `<div class="text-danger">${json.message}</div>`;
                 }
-            } catch {
+            } catch (err) {
+                console.error(err);
                 result.innerHTML = `<div class="text-danger">Erreur réseau</div>`;
             } finally {
                 submitBtn.disabled = false;
