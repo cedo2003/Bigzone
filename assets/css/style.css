@@ -1,0 +1,127 @@
+body {
+  font-family: "Inter", sans-serif;
+  background: #f8fafc;
+}
+footer a:hover {
+  color: #ffffff !important;
+}
+.navbar {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+.hero {
+  background: linear-gradient(rgba(37, 99, 235, 0.9), rgba(37, 99, 235, 0.8)),
+    url("https://images.unsplash.com/photo-1507679799987-c73779587ccf?ixlib=rb-4.0.3&auto=format&fit=crop&w=2071&q=80");
+  background-size: cover;
+  background-position: center;
+  color: white;
+  padding: 150px 0 100px;
+  border-radius: 0 0 20px 20px;
+}
+.zone-card {
+  transition: all 0.3s;
+}
+.zone-card:hover {
+  transform: translateY(-10px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15) !important;
+}
+/* Responsive improvements */
+body {
+  padding-top: 80px; /* leave space for fixed navbar */
+}
+.navbar-brand {
+  font-size: clamp(1.25rem, 1.6vw + 0.4rem, 2rem);
+}
+.hero {
+  min-height: 380px;
+  display: flex;
+  align-items: center;
+}
+.hero .display-4 {
+  font-size: clamp(1.6rem, 2.6vw + 0.6rem, 3.5rem);
+  line-height: 1.05;
+}
+.hero .lead {
+  font-size: clamp(0.95rem, 1.1vw + 0.6rem, 1.15rem);
+}
+.input-group .form-control {
+  min-width: 0; /* allow shrinking on small screens */
+}
+.card-img-top {
+  height: 220px;
+  object-fit: cover;
+}
+.faq-item {
+  cursor: pointer;
+}
+.faq-answer {
+  display: none;
+  padding: 1rem 0;
+}
+
+/* Large screens tweak */
+@media (min-width: 1200px) {
+  .hero {
+    padding: 180px 0 120px;
+  }
+  .card-img-top {
+    height: 260px;
+  }
+}
+
+/* Medium and small screens */
+@media (max-width: 992px) {
+  .hero {
+    padding: 120px 0 70px;
+  }
+  .card-img-top {
+    height: 200px;
+  }
+}
+
+@media (max-width: 768px) {
+  body {
+    padding-top: 70px;
+  }
+  .hero {
+    padding: 80px 0 50px;
+  }
+  .hero .display-4 {
+    font-size: 2rem;
+  }
+  .hero .lead {
+    padding: 0 0.75rem;
+  }
+  .col-lg-7 {
+    width: 100%;
+  }
+  .zone-card:hover {
+    transform: none;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08) !important;
+  }
+  .card-img-top {
+    height: 180px;
+  }
+}
+
+@media (max-width: 480px) {
+  body {
+    padding-top: 64px;
+  }
+  .hero {
+    padding: 60px 0 40px;
+  }
+  .hero .display-4 {
+    font-size: 1.45rem;
+  }
+  .input-group .btn {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  .card-img-top {
+    height: 140px;
+  }
+  footer .d-flex {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}
